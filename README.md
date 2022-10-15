@@ -1,7 +1,7 @@
 # dArt
 
 ## Live Demo
-[dArt Dapp](https://lasy-meerkat-8e3baf.netlify.app/)
+[dArt Dapp](https://mellifluous-dodol-9d6f54.netlify.app/)
 
 
 
