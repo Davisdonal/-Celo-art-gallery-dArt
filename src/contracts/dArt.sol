@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity >=0.7.0 <0.9.0;
+import "@openzeppelin/contracts/utils/Counters.sol";
+
 
 interface IERC20Token {
     function transfer(address, uint256) external returns (bool);
@@ -28,15 +30,17 @@ interface IERC20Token {
 }
 
 contract TechArt {
-    uint private artsLength = 0;
-    address private cUsdTokenAddress =
+    using Counters for Counters.Counter;
+    Counters.Counter private artsLength;
+
+    address private constant cUsdTokenAddress =
         0x874069Fa1Eb16D44d622F2e0Ca25eeA172369bC1;
 
     struct Art {
         address payable owner;
         string image;
         string description;
-        uint tip;
+        uint price;
         uint noOfAvailable;
         uint sold;
     }
@@ -53,6 +57,11 @@ contract TechArt {
         _;
     }
 
+    modifier checkIfValidString(string calldata _input) {
+        require(bytes(_input).length > 0, "Empty string");
+        _;
+    }
+
     /**
      * @dev allow users to add a art to sell
      * @notice  values entered needs to be valid
@@ -63,19 +72,42 @@ contract TechArt {
         string calldata _description,
         uint _tip,
         uint _noOfAvailable
-    ) public checkIfValidInput(_tip) checkIfValidInput(_noOfAvailable) {
-        require(bytes(_image).length > 0, "Empty image");
-        require(bytes(_description).length > 0, "Empty description");
-        uint _sold = 0;
-        arts[artsLength] = Art(
+    ) public 
+    checkIfValidInput(_tip) checkIfValidInput(_noOfAvailable) 
+    checkIfValidString(_image) checkIfValidString(_description)
+    {
+        arts[artsLength.current()] = Art(
             payable(msg.sender),
             _image,
             _description,
             _tip,
             _noOfAvailable,
-            _sold
+            0
         );
-        artsLength++;
+        artsLength.increment();
+    }
+
+    /**
+     * @dev allow users to buy a art from the platform
+     * @notice Reverts if art is out of inventory(out of stock)
+     */
+    function buyArt(uint _index, uint _quantity) public payable checkIfValidInput(_quantity){
+        Art storage currentArt = arts[_index];
+        require(currentArt.noOfAvailable > _quantity, "Stocks unavailable");
+        require(
+            currentArt.owner != msg.sender,
+            "You can't buy your own arts"
+        );
+        currentArt.sold+= _quantity;
+        currentArt.noOfAvailable-= _quantity;
+        require(
+            IERC20Token(cUsdTokenAddress).transferFrom(
+                msg.sender,
+                currentArt.owner,
+                currentArt.price * _quantity
+            ),
+            "Transfer failed."
+        );
     }
 
     /**
@@ -112,6 +144,7 @@ contract TechArt {
     function reduceInventory(uint _index, uint _amount)
         external
         checkIfArtOwner(_index)
+        checkIfValidInput(_amount)
     {
         Art storage currentArt = arts[_index];
         require(
@@ -123,7 +156,7 @@ contract TechArt {
     }
 
     /**
-     * @dev allow arts' owners to change the tip of their arts
+     * @dev allow arts' owners to change the price of their arts
      * @notice newTip needs to be greater than zero
      */
     function modifyTip(uint _index, uint _newTip)
@@ -131,7 +164,7 @@ contract TechArt {
         checkIfArtOwner(_index)
         checkIfValidInput(_newTip)
     {
-        arts[_index].tip = _newTip;
+        arts[_index].price = _newTip;
     }
 
     // getting art
@@ -151,37 +184,15 @@ contract TechArt {
             arts[_index].owner,
             arts[_index].image,
             arts[_index].description,
-            arts[_index].tip,
+            arts[_index].price,
             arts[_index].noOfAvailable,
             arts[_index].sold
         );
     }
 
-    /**
-     * @dev allow users to buy a art from the platform
-     * @notice Reverts if art is out of inventory(out of stock)
-     */
-    function buyArt(uint _index, uint _quantity) public payable checkIfValidInput(_quantity){
-        Art storage currentArt = arts[_index];
-        require(currentArt.noOfAvailable > _quantity, "Stocks unavailable");
-        require(
-            currentArt.owner != msg.sender,
-            "You can't buy your own arts"
-        );
-        currentArt.sold+= _quantity;
-        currentArt.noOfAvailable-= _quantity;
-        require(
-            IERC20Token(cUsdTokenAddress).transferFrom(
-                msg.sender,
-                currentArt.owner,
-                currentArt.tip * _quantity
-            ),
-            "Transfer failed."
-        );
-    }
 
     // to get the length of arts in the mapping
     function getArtsLength() public view returns (uint) {
-        return (artsLength);
+        return (artsLength.current());
     }
 }
